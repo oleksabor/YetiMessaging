@@ -1,2 +1,2 @@
 YetiMessaging is very simple and lightweight framework that allows to publish and consume short crossprocess messages.
-Different transports can be used, UDP (no state connection and no guarantee) and file message transport is implemented.
+Different transports can be used, UDP (no state connection and no guarantee) and file message transport was implemented.
