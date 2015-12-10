@@ -11,11 +11,18 @@ using YetiMessaging.Transport;
 
 namespace YetiMessaging
 {
+	/// <summary>
+	/// simple client that is used to notify server that something has happend
+	/// </summary>
 	public class Client : IDisposable
 	{
 		protected IServerTransport Transport;
 		protected AttributeLoader<IdAttribute> _loader = new AttributeLoader<IdAttribute>();
 
+		/// <summary>
+		/// Initializes a new instance of the <see cref="Client"/> class.
+		/// </summary>
+		/// <param name="transport">The transport that should be used to touch with server.</param>
 		public Client(IServerTransport transport)
 		{
 			Transport = transport;
@@ -45,6 +52,10 @@ namespace YetiMessaging
 
 		protected byte[] idheader = new byte[] { 11, 12, 13 };
 
+		/// <summary>
+		/// Sends the specified message to the server using transport configured.
+		/// </summary>
+		/// <param name="message">The message.</param>
 		public void Send(IMessage message)
 		{
 			var idattr = _loader.Load(message).First();

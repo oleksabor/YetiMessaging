@@ -10,14 +10,27 @@ using YetiMessaging.Transport;
 
 namespace YetiMessaging
 {
+	/// <summary>
+	/// listen client messages and notify subscribers
+	/// </summary>
 	public class Server : Client
 	{
 		//TaskFactory Tasks;
 
 		int GuidLength = 0;
 
+		/// <summary>
+		/// Gets or sets a value indicating whether this <see cref="Server"/> calls subscribers in separate thread or on the same that calls <see cref="OnReceive"/>.
+		/// </summary>
+		/// <value>
+		///   <c>true</c> if multithreaded; otherwise, <c>false</c>.
+		/// </value>
 		public bool Multithreaded { get; set; }
 
+		/// <summary>
+		/// Initializes a new instance of the <see cref="Server"/> class.
+		/// </summary>
+		/// <param name="transport">The transport that should be used to reveive messages.</param>
 		public Server(IServerTransport transport)
 			: base(transport)
 		{
@@ -50,6 +63,10 @@ namespace YetiMessaging
 		IList<ISubscriber> _subscribers;
 		object _subscribersLock = new object();
 
+		/// <summary>
+		/// Adds the specified subscriber instance.
+		/// </summary>
+		/// <param name="value">subscriber instance.</param>
 		public void Add(ISubscriber value)
 		{
 			if (!_subscribers.Contains(value))
@@ -99,7 +116,11 @@ namespace YetiMessaging
 			else
 				OnReceiveSingle(value);
 		}
-		
+
+		/// <summary>
+		/// Called when message is received with transport. Parses message, tries to find appropriate subscriber
+		/// </summary>
+		/// <param name="value">The raw message value.</param>
 		protected virtual void OnReceiveSingle(byte[] value)
 		{
 			try
