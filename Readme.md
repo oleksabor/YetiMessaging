@@ -1,5 +1,6 @@
-YetiMessaging is very simple and lightweight framework that allows to publish and consume short crossprocess messages on the same machine.
-Different transports can be used, UDP (no state connection and no guarantee) and file message (for fun) transports were implemented.
+YetiMessaging is very simple and lightweight framework that allows to publish and consume short crossprocess messages on the same machine.
+
+Different transports can be used, UDP (no state connection and no guarantee) and file message (for fun) transports were implemented.Server can be parameterized to use outer message factory.Message has to implement custom `IMessage` interface and to be marked using `Id` attribute.
 
 I have used YetiMessaging for VisualStudio addin to inform all addin instances about configuration changes.
 
@@ -7,6 +8,7 @@ Test cases can be found in the YetiMessagingTest folder
 
 Simplest one is below
 
+````
 var subscriber = new YetiMessagingTest.StringSubscriber();
 
 var transport = new UDPTransport("239.0.0.1", 2234);
@@ -23,8 +25,10 @@ using (var service = new Server(transport)) //server is ready and listening
 	Thread.Sleep(1500); // server should have time to get message from network and parse it
 	Assert.IsTrue(subscriber.Message, "no message was received");
 }
+````
 
 Here is sample subscriber implementation
+````
 [IdAttribute("{72F60CAB-B986-48D0-BA54-1DC4758CCD58}")]
 public class StringSubscriber : Subscriber
 {
@@ -35,13 +39,13 @@ public class StringSubscriber : Subscriber
 		Trace.TraceInformation("string {0}", message.Value);
 		Message = true;
 	}
-}
+}````
 
-Subscriber type is set with Id attribute. It should have the same value that was set on appropriate message type. Please find string message base implementation below
+Subscriber type is set with Id attribute. It should have the same value that was set on appropriate message type. Please find string message base implementation below````
 [IdAttribute("{72F60CAB-B986-48D0-BA54-1DC4758CCD58}")]
 public class StringMessage : IMessage
 {
-}
+}````
 
 
 
