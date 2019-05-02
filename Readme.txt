@@ -1,5 +1,5 @@
 YetiMessaging is very simple and lightweight framework that allows to publish and consume short crossprocess messages on the same machine.
-Different transports can be used, UDP (no state connection and no guarantee) and file message (for fun) transport was implemented.
+Different transports can be used, UDP (no state connection and no guarantee) and file message (for fun) transports were implemented.
 
 I have used YetiMessaging for VisualStudio addin to inform all addin instances about configuration changes.
 
