@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net45</TargetFramework>
     <RootNamespace>YetiMessaging</RootNamespace>
+    <Authors>oleksa.borodie@gmail.com</Authors>
   </PropertyGroup>
 
   <ItemGroup>
