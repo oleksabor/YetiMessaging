@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using YetiMessaging.Logging;
 
 namespace YetiMessaging.Transport
 {
 	public class FileTransport : IServerTransport, IDisposable
 	{
+		ILog Log = LogProvider.GetCurrentClassLogger();
+
 		private FileSystemWatcher _watcher;
 
 		private string FileName;
@@ -31,7 +34,7 @@ namespace YetiMessaging.Transport
 				this._watcher.Changed -= new FileSystemEventHandler(this._watcher_Changed);
 				this._watcher.Dispose();
 				this._watcher = null;
-				Trace.WriteLine(string.Format("watcher disposed {0}", this.FileName), base.GetType().Name);
+				Log.Debug("watcher disposed {0}", this.FileName);
 			}
 		}
 
@@ -41,12 +44,12 @@ namespace YetiMessaging.Transport
 			this._watcher.Changed += new FileSystemEventHandler(this._watcher_Changed);
 			this._watcher.NotifyFilter = NotifyFilters.LastWrite;
 			this._watcher.EnableRaisingEvents = true;
-			Trace.WriteLine(string.Format("watching in {0} for {1}", this._watcher.Path, this._watcher.Filter), base.GetType().Name);
+			Log.Info("watching in {0} for {1}", this._watcher.Path, this._watcher.Filter);
 		}
 
 		private void _watcher_Changed(object sender, FileSystemEventArgs e)
 		{
-			Trace.WriteLine(string.Format("got _watcher_Changed {0} {1}", e.ChangeType, e.FullPath), base.GetType().Name);
+			Log.Trace("got _watcher_Changed {0} {1}", e.ChangeType, e.FullPath);
 			byte[] obj = null;
 			lock (this._fileLock)
 			{
@@ -60,7 +63,7 @@ namespace YetiMessaging.Transport
 
 		public void Send(byte[] data)
 		{
-			Trace.WriteLine(string.Format("notifying {0}", this.FileName), base.GetType().Name);
+			Log.Debug("notifying {0}", this.FileName);
 			lock (this._fileLock)
 			{
 				File.WriteAllBytes(this.FileName, data);

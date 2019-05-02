@@ -5,11 +5,14 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using YetiMessaging.Attrib;
+using YetiMessaging.Logging;
 
 namespace YetiMessaging.Message
 {
 	public abstract class Subscriber : ISubscriber
 	{
+		ILog Log = LogProvider.GetCurrentClassLogger();
+
 		public abstract void OnMessage(IMessage message, byte[] raw);
 
 		AttributeLoader<IdAttribute> _loader = new AttributeLoader<IdAttribute>();
@@ -22,9 +25,9 @@ namespace YetiMessaging.Message
 			{
 				if (ids.Count() > 0)
 					foreach (var i in ids)
-						Debug.WriteLine(string.Format("subs {0} {1}", this.GetType().Name, i.Id));
+						Log.Trace("subs {0} {1}", this.GetType().Name, i.Id);
 				else
-					Debug.WriteLine(string.Format("no custom id attr on {0}", this.GetType().Name));
+					Log.Debug("no custom id attr on {0}", this.GetType().Name);
 			}
 			return res; 
 		}

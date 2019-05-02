@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using YetiMessaging.Attrib;
+using YetiMessaging.Logging;
 using YetiMessaging.Message;
 using YetiMessaging.Transport;
 
@@ -17,6 +18,8 @@ namespace YetiMessaging
 	/// </summary>
 	public class Server : Client
 	{
+		ILog Log = LogProvider.GetCurrentClassLogger();
+
 		//TaskFactory Tasks;
 
 		int GuidLength = 0;
@@ -85,49 +88,10 @@ namespace YetiMessaging
 				if (_messages == null)
 					lock (_subscribersLock)
 						if (_messages == null)
-							_messages = GetMessages(_loader);
+							_messages = messageLoader.GetMessages();
 				return _messages;
 			}
 		}
-
-		IDictionary<Guid, Type> GetMessages(AttributeLoader<IdAttribute> loader)
-						{
-			var path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-			var assemblies = new List<Assembly>();
-			foreach (var f in Directory.GetFiles(path))
-			{
-				var ext = Path.GetExtension(f);
-				if (".dll".Equals(ext, StringComparison.OrdinalIgnoreCase) || ".exe".Equals(ext, StringComparison.OrdinalIgnoreCase))
-					try
-					{
-						assemblies.Add(Assembly.LoadFrom(f));
-						Trace.WriteLine(f);
-					}
-					catch (Exception)
-					{ }
-			}
-			var types = assemblies.SelectMany(_ => _.GetTypes());
-							types = types.Where(_ => typeof(IMessage).IsAssignableFrom(_) && _ != typeof(IMessage));
-			var res = new Dictionary<Guid, Type>(types.Count());
-							foreach (var t in types)
-								try
-								{
-					var attrs = loader.Load(t);
-									if (attrs.Any())
-									{
-										var attr = attrs.First();
-						res.Add(attr.Id, t);
-
-										Debug.WriteLine(string.Format("known message {0} {1}", attr.Id, t.Name), this.GetType().Name);
-									}
-									else
-										Trace.TraceWarning("no IdAttribute on {0}", t);
-
-								}
-								catch { }
-			return res;
-			}
-
 
 		protected virtual void OnReceive(byte[] value)
 		{
@@ -137,72 +101,71 @@ namespace YetiMessaging
 				OnReceiveSingle(value);
 		}
 
+		protected IMessage Deconvert(byte[] value)
+		{
+			IMessage message = null;
+			if (value.Length > idheader.Length)
+			{
+				var idbytes = new byte[idheader.Length];
+				if (idheader.SequenceEqual(value.Take(idheader.Length)))
+				{
+					GuidLength = GuidLength == 0 ? Guid.NewGuid().ToByteArray().Length : GuidLength;
+					var idguid = new Guid(value.Skip(idheader.Length).Take(GuidLength).ToArray());
+
+					value = value.Skip(idheader.Length + GuidLength).ToArray();
+
+					var messageType = Messages[idguid];
+					message = (IMessage)Activator.CreateInstance(messageType);
+					message.Deconvert(value);
+				}
+			}
+			return message;
+		}
+
+		void Notify(IMessage message, byte[] value, IEnumerable<ISubscriber> notifications)
+		{
+			foreach (var notify in notifications)
+				try
+				{
+					Log.Debug("trying notify {0}", notify.GetType().Name);
+					notify.OnMessage(message, value);
+					if (message.Handled)
+						break;
+				}
+				catch (Exception ex)
+				{
+					Log.Error(ex, "failed to notify {0}", notify.GetType().Name);
+					Unsubscribe(notify);
+				}
+		}
+
+		void Unsubscribe(ISubscriber value)
+		{
+			lock (_subscribersLock)
+				_subscribers.Remove(value);
+		}
+
 		protected virtual void OnReceiveSingle(byte[] value)
 		{
 			try
 			{
 				IEnumerable<ISubscriber> notifications = _subscribers;
-				IMessage message = null;
-				bool headerFound = true;
-				if (value.Length > idheader.Length)
+				IMessage message = Deconvert(value);
+				if (message == null)
 				{
-					var idbytes = new byte[idheader.Length];
-					if (idheader.SequenceEqual(value.Take(idheader.Length)))
-					{
-						GuidLength = GuidLength == 0 ? Guid.NewGuid().ToByteArray().Length : GuidLength;
-						var idguid = new Guid(value.Skip(idheader.Length).Take(GuidLength).ToArray());
-
-						value = value.Skip(idheader.Length + GuidLength).ToArray();
-						notifications = _subscribers.Where(_ => _.Matches(idguid));
-						if (notifications.Count() == 0)
-						{
-							Debug.WriteLine(string.Format("no subscriber was found for {0}", idguid), this.GetType().Name);
-							foreach (var t in _subscribers)
-								Debug.WriteLine(string.Format("subscribed {0} {1}", string.Join(",", t.Ids.Select(_ => _.ToString()).ToArray()), t.GetType().Name), this.GetType().Name);
-							Debug.WriteLine(".", this.GetType().Name);
-						}
-						var messageType = Messages[idguid];
-						message = (IMessage)Activator.CreateInstance(messageType);
-						message.Deconvert(value);
-					}
+					Log.Warn("no message was deconverted");
+					return;
 				}
-				else
-				{
-					headerFound = false;
-					Debug.WriteLine("no idheader in message was found");
-				}
-
+				var attrLoader = new MessageLoader();
+				notifications = _subscribers.Where(_ => _.Matches(attrLoader.Load(message.GetType()).First().Id));
 				lock (_subscribersLock)
 					notifications = notifications.ToList();
-				foreach (var notify in notifications)
-					try
-					{
-						Debug.WriteLine(string.Format("trying notify {0}", notify.GetType().Name), this.GetType().Name); 
-						notify.OnMessage(message, value);
-						if (message.Handled)
-							break;
-					}
-					catch (Exception ex)
-					{
-						Trace.WriteLine(string.Format("failed to notify {0}", notify.GetType().Name), this.GetType().Name);
-						if (headerFound)
-						{
-							Trace.TraceError(ex.Message);
-							lock (_subscribersLock)
-								_subscribers.Remove(notify);
-						}
-					}
-			}
-			catch (ReflectionTypeLoadException r)
-			{
-				Trace.WriteLine(string.Format("failed to OnReceiveSingle '{0}'", r.Message), this.GetType().Name);
-				foreach (var re in r.LoaderExceptions)
-					Trace.TraceError(re.ToString());
+
+				Notify(message, value, notifications);
 			}
 			catch (Exception ex)
 			{
-				Trace.WriteLine(string.Format("failed to OnReceiveSingle '{0}'", ex.Message), this.GetType().Name);
-				Trace.TraceError(ex.ToString());
+				Log.Error(ex, "failed to OnReceiveSingle");
 			}
 		}
 	}

@@ -5,11 +5,14 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using YetiMessaging.Logging;
 
 namespace YetiMessaging.Transport
 {
 	public class UDPTransport : IServerTransport, IDisposable
 	{
+		ILog Log = LogProvider.GetCurrentClassLogger();
+
 		/// <summary>
 		/// Gets or sets the multicast host ip address. The multicast address range is 224.0.0.0 to 239.255.255.255
 		/// </summary>
@@ -36,7 +39,6 @@ namespace YetiMessaging.Transport
 
 		private void Received(IAsyncResult result)
 		{
-			IPEndPoint iPEndPoint = null;
 			if (this.Listener != null)
 			{
 				lock (this.listenerLock)
@@ -45,26 +47,17 @@ namespace YetiMessaging.Transport
 					{
 						try
 						{
-							byte[] obj2 = this.Listener.EndReceive(result, ref iPEndPoint);
-							if (iPEndPoint != null && this.localAddresses.Contains(iPEndPoint.Address))
-							{
-								if (this.OnReceive != null)
-								{
-									this.OnReceive(obj2);
-								}
-							}
-								else
-							{
-								Trace.TraceWarning(string.Format("ignoring unknown sender '{0}'", iPEndPoint?.Address));
-							}
+							byte[] data = ReceiveFromLocal(this.Listener, result);
+
+							if (data != null && this.OnReceive != null)
+									this.OnReceive(data);
+
 							if (!this.stopped)
-							{
 								this.Listener.BeginReceive(new AsyncCallback(this.Received), this);
-							}
 						}
 						catch (Exception ex)
 						{
-							Trace.TraceError(string.Format("failed to receive {0}", ex.Message));
+							Log.Error("failed to receive {0}", ex.Message);
 						}
 					}
 				}
@@ -78,6 +71,19 @@ namespace YetiMessaging.Transport
 						Trace.TraceWarning("no active listener was found, creating a new one");
 						this.Start();
 					}
+				}
+			}
+
+			byte[] ReceiveFromLocal(UdpClient listener, IAsyncResult res)
+			{
+				IPEndPoint iPEndPoint = null;
+				byte[] obj2 = listener.EndReceive(res, ref iPEndPoint);
+				if (iPEndPoint != null && this.localAddresses.Contains(iPEndPoint.Address))
+					return obj2;
+				else
+				{
+					Log.Warn("ignoring unknown sender '{0}'", iPEndPoint?.Address);
+					return null;
 				}
 			}
 		}
@@ -97,13 +103,13 @@ namespace YetiMessaging.Transport
 				IPAddress multicastAddr = IPAddress.Parse(this.Host);
 				this.Listener.JoinMulticastGroup(multicastAddr);
 
-			this.localAddresses = NetworkInterface.GetAllNetworkInterfaces()
-				.Where(_ => _.OperationalStatus == OperationalStatus.Up)
-				.Select(_ => _.GetIPProperties())
-				.SelectMany(_ => _.UnicastAddresses)
-				.Select(_ => _.Address).ToList();
+				this.localAddresses = NetworkInterface.GetAllNetworkInterfaces()
+					.Where(_ => _.OperationalStatus == OperationalStatus.Up)
+					.Select(_ => _.GetIPProperties())
+					.SelectMany(_ => _.UnicastAddresses)
+					.Select(_ => _.Address).ToList();
 
-				Trace.WriteLine(string.Format("Waiting for broadcast on {0}:{1}", this.Host, this.Port), base.GetType().Name);
+				Log.Debug("Waiting for broadcast on {0}:{1}", this.Host, this.Port);
 				this.Listener.BeginReceive(new AsyncCallback(this.Received), this);
 			}
 			catch (Exception inner)
@@ -116,16 +122,16 @@ namespace YetiMessaging.Transport
 		{
 			this.stopped = true;
 			if (this.Listener != null)
-					{
+			{
 				lock (this.listenerLock)
 				{
 					if (this.Listener != null)
 					{
 						this.Listener.Close();
 						this.Listener = null;
-						Trace.WriteLine(string.Format("no more listening {0}:{1}", this.Host, this.Port), base.GetType().Name);
+						Log.Debug("no more listening {0}:{1}", this.Host, this.Port);
 					}
-		}
+				}
 			}
 		}
 

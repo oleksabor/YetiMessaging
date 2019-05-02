@@ -17,7 +17,7 @@ namespace YetiMessaging
 	public class Client : IDisposable
 	{
 		protected IServerTransport Transport;
-		protected AttributeLoader<IdAttribute> _loader = new AttributeLoader<IdAttribute>();
+		protected MessageLoader messageLoader = new MessageLoader();
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Client"/> class.
@@ -58,7 +58,7 @@ namespace YetiMessaging
 		/// <param name="message">The message.</param>
 		public void Send(IMessage message)
 		{
-			var idattr = _loader.Load(message).First();
+			var idattr = messageLoader.Load(message.GetType()).First();
 
 			using (var ms = new MemoryStream())
 			{
