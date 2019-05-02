@@ -37,14 +37,27 @@ namespace YetiMessaging
 		/// </summary>
 		/// <param name="transport">The transport that should be used to reveive messages.</param>
 		public Server(IServerTransport transport)
+			: this(transport, null)
+		{
+		}
+
+		/// <summary>
+		/// Initializes a new instance of the <see cref="Server"/> class.
+		/// </summary>
+		/// <param name="transport">The transport that should be used to reveive messages.</param>
+		public Server(IServerTransport transport, Func<Type, IMessage> factory)
 			: base(transport)
 		{
+			messageFactory = factory;
+
 			transport.OnReceive = OnReceive;
 
 			_subscribers = new List<ISubscriber>();
 			//Tasks = new TaskFactory();
 			Start();
 		}
+
+		readonly Func<Type, IMessage> messageFactory;
 
 		public void Start()
 		{
@@ -101,6 +114,11 @@ namespace YetiMessaging
 				OnReceiveSingle(value);
 		}
 
+		public IMessage CreateMessage(Type messageType)
+		{
+			return messageFactory?.Invoke(messageType) ?? (IMessage)Activator.CreateInstance(messageType);
+		}
+
 		protected IMessage Deconvert(byte[] value)
 		{
 			IMessage message = null;
@@ -115,7 +133,7 @@ namespace YetiMessaging
 					value = value.Skip(idheader.Length + GuidLength).ToArray();
 
 					var messageType = Messages[idguid];
-					message = (IMessage)Activator.CreateInstance(messageType);
+					message = CreateMessage(messageType);
 					message.Deconvert(value);
 				}
 			}
