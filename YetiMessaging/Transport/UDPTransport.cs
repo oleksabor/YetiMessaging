@@ -5,11 +5,10 @@ using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
-using System.Text;
 
 namespace YetiMessaging.Transport
 {
-	public class UDPTransport : IServerTransport
+	public class UDPTransport : IServerTransport, IDisposable
 	{
 		/// <summary>
 		/// Gets or sets the multicast host ip address. The multicast address range is 224.0.0.0 to 239.255.255.255
@@ -21,98 +20,118 @@ namespace YetiMessaging.Transport
 		public int Port { get; private set; }
 
 		UdpClient Listener;
-		object listenerLock = new object();
+		private object listenerLock = new object();
 
-		bool stopped;
+		private bool stopped;
+
+		private IEnumerable<IPAddress> localAddresses;
 
 		public Action<byte[]> OnReceive { get; set; }
 
 		public UDPTransport(string ip, int port)
 		{
-			Host = ip;
-			Port = port;
+			this.Host = ip;
+			this.Port = port;
 		}
 
-		void Received(IAsyncResult result)
+		private void Received(IAsyncResult result)
 		{
-			IPEndPoint remote = null;
-			if (Listener != null)
-				lock (listenerLock)
-					if (Listener != null)
+			IPEndPoint iPEndPoint = null;
+			if (this.Listener != null)
+			{
+				lock (this.listenerLock)
+				{
+					if (this.Listener != null)
+					{
 						try
 						{
-							var res = Listener.EndReceive(result, ref remote);
-							Debug.WriteLine(string.Format("data from {0}", remote.Address), this.GetType().Name);
-							if (remote != null && localAddresses.Contains(remote.Address))
+							byte[] obj2 = this.Listener.EndReceive(result, ref iPEndPoint);
+							if (iPEndPoint != null && this.localAddresses.Contains(iPEndPoint.Address))
 							{
-
-								if (OnReceive == null)
-									Debug.WriteLine("no receiver was assigned");
-								else
-									OnReceive(res);
+								if (this.OnReceive != null)
+								{
+									this.OnReceive(obj2);
+								}
 							}
-							else
-								Trace.TraceWarning("ignoring unknown sender");
-							if (!stopped)
-								Listener.BeginReceive(Received, this);
+								else
+							{
+								Trace.TraceWarning(string.Format("ignoring unknown sender '{0}'", iPEndPoint?.Address));
+							}
+							if (!this.stopped)
+							{
+								this.Listener.BeginReceive(new AsyncCallback(this.Received), this);
+							}
 						}
 						catch (Exception ex)
 						{
 							Trace.TraceError(string.Format("failed to receive {0}", ex.Message));
 						}
-			if (Listener == null)
-				lock (listenerLock)
-					if (Listener == null && !stopped)
+					}
+				}
+			}
+			if (this.Listener == null)
+			{
+				lock (this.listenerLock)
+				{
+					if (this.Listener == null && !this.stopped)
 					{
 						Trace.TraceWarning("no active listener was found, creating a new one");
-						Start();
+						this.Start();
 					}
-
+				}
+			}
 		}
 
 		public void Start()
 		{
-			Listener = new UdpClient();
+			try
+			{
+				this.Listener = new UdpClient();
+				this.Listener.ExclusiveAddressUse = false;
+				IPEndPoint localEP = new IPEndPoint(IPAddress.Any, this.Port);
 
-			Listener.ExclusiveAddressUse = false;
-			IPEndPoint localEp = new IPEndPoint(IPAddress.Any, Port);
+				this.Listener.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+				this.Listener.ExclusiveAddressUse = false;
+				this.Listener.Client.Bind(localEP);
 
-			Listener.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-			Listener.ExclusiveAddressUse = false;
+				IPAddress multicastAddr = IPAddress.Parse(this.Host);
+				this.Listener.JoinMulticastGroup(multicastAddr);
 
-			Listener.Client.Bind(localEp);
-
-			IPAddress multicastaddress = IPAddress.Parse(Host);
-			Listener.JoinMulticastGroup(multicastaddress);
-
-			localAddresses = NetworkInterface.GetAllNetworkInterfaces()
+			this.localAddresses = NetworkInterface.GetAllNetworkInterfaces()
 				.Where(_ => _.OperationalStatus == OperationalStatus.Up)
 				.Select(_ => _.GetIPProperties())
 				.SelectMany(_ => _.UnicastAddresses)
 				.Select(_ => _.Address).ToList();
 
-			Trace.WriteLine(string.Format("Waiting for broadcast on {0}:{1}", Host, Port), this.GetType().Name);
-			var res = Listener.BeginReceive(Received, this);
+				Trace.WriteLine(string.Format("Waiting for broadcast on {0}:{1}", this.Host, this.Port), base.GetType().Name);
+				this.Listener.BeginReceive(new AsyncCallback(this.Received), this);
+			}
+			catch (Exception inner)
+			{
+				throw new TransportException(string.Format("failed to start transport {0} {1}", this.Host, this.Port), inner);
+			}
 		}
-
-		IEnumerable<IPAddress> localAddresses;
 
 		public void Stop()
 		{
-			stopped = true;
-			if (Listener != null)
-				lock (listenerLock)
-					if (Listener != null)
+			this.stopped = true;
+			if (this.Listener != null)
 					{
-						Listener.Close();
-						Listener = null;
-						Trace.WriteLine(string.Format("no more listening {0}:{1}", Host, Port), this.GetType().Name);
+				lock (this.listenerLock)
+				{
+					if (this.Listener != null)
+					{
+						this.Listener.Close();
+						this.Listener = null;
+						Trace.WriteLine(string.Format("no more listening {0}:{1}", this.Host, this.Port), base.GetType().Name);
 					}
+		}
+			}
 		}
 
 		public void Dispose()
 		{
-			Stop();
+			this.Stop();
 		}
 
 		public void Send(byte[] data)

@@ -11,5 +11,7 @@ namespace YetiMessaging.Message
 		byte[] Convert();
 
 		object Value { get; }
+
+		bool Handled { get; set; }
 	}
 }

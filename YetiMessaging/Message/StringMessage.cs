@@ -31,5 +31,7 @@ namespace YetiMessaging.Message
 		}
 
 		public object Value { get { return _value; } }
+
+		public bool Handled { get; set; }
 	}
 }

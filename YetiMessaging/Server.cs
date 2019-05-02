@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using YetiMessaging.Attrib;
 using YetiMessaging.Message;
 using YetiMessaging.Transport;
 
@@ -83,18 +85,38 @@ namespace YetiMessaging
 				if (_messages == null)
 					lock (_subscribersLock)
 						if (_messages == null)
+							_messages = GetMessages(_loader);
+				return _messages;
+			}
+		}
+
+		IDictionary<Guid, Type> GetMessages(AttributeLoader<IdAttribute> loader)
 						{
-							var types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(_ => _.GetTypes());
+			var path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+			var assemblies = new List<Assembly>();
+			foreach (var f in Directory.GetFiles(path))
+			{
+				var ext = Path.GetExtension(f);
+				if (".dll".Equals(ext, StringComparison.OrdinalIgnoreCase) || ".exe".Equals(ext, StringComparison.OrdinalIgnoreCase))
+					try
+					{
+						assemblies.Add(Assembly.LoadFrom(f));
+						Trace.WriteLine(f);
+					}
+					catch (Exception)
+					{ }
+			}
+			var types = assemblies.SelectMany(_ => _.GetTypes());
 							types = types.Where(_ => typeof(IMessage).IsAssignableFrom(_) && _ != typeof(IMessage));
-							_messages = new Dictionary<Guid, Type>(types.Count());
+			var res = new Dictionary<Guid, Type>(types.Count());
 							foreach (var t in types)
 								try
 								{
-									var attrs = _loader.Load(t);
+					var attrs = loader.Load(t);
 									if (attrs.Any())
 									{
 										var attr = attrs.First();
-										_messages.Add(attr.Id, t);
+						res.Add(attr.Id, t);
 
 										Debug.WriteLine(string.Format("known message {0} {1}", attr.Id, t.Name), this.GetType().Name);
 									}
@@ -103,10 +125,8 @@ namespace YetiMessaging
 
 								}
 								catch { }
-						}
-				return _messages;
+			return res;
 			}
-		}
 
 
 		protected virtual void OnReceive(byte[] value)
@@ -117,10 +137,6 @@ namespace YetiMessaging
 				OnReceiveSingle(value);
 		}
 
-		/// <summary>
-		/// Called when message is received with transport. Parses message, tries to find appropriate subscriber
-		/// </summary>
-		/// <param name="value">The raw message value.</param>
 		protected virtual void OnReceiveSingle(byte[] value)
 		{
 			try
@@ -163,6 +179,8 @@ namespace YetiMessaging
 					{
 						Debug.WriteLine(string.Format("trying notify {0}", notify.GetType().Name), this.GetType().Name); 
 						notify.OnMessage(message, value);
+						if (message.Handled)
+							break;
 					}
 					catch (Exception ex)
 					{
@@ -175,9 +193,16 @@ namespace YetiMessaging
 						}
 					}
 			}
+			catch (ReflectionTypeLoadException r)
+			{
+				Trace.WriteLine(string.Format("failed to OnReceiveSingle '{0}'", r.Message), this.GetType().Name);
+				foreach (var re in r.LoaderExceptions)
+					Trace.TraceError(re.ToString());
+			}
 			catch (Exception ex)
 			{
 				Trace.WriteLine(string.Format("failed to OnReceiveSingle '{0}'", ex.Message), this.GetType().Name);
+				Trace.TraceError(ex.ToString());
 			}
 		}
 	}
