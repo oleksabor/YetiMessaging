@@ -1,4 +1,4 @@
-YetiMessaging is very simple and lightweight framework that allows to publish and consume short crossprocess messages on the same machine.
+YetiMessaging is very simple and lightweight framework that allows to publish and consume short broadcast messages on the certain machine.
 
 Different transports can be used, UDP (no state connection and no guarantee) and file message (for fun) transports were implemented.Server can be parameterized to use outer message factory.Message has to implement custom `IMessage` interface and to be marked using `Id` attribute.
 
@@ -46,6 +46,6 @@ Subscriber type is set with Id attribute. It should have the same value that was
 public class StringMessage : IMessage
 {
 }````
-
+Message and subscriber has to be marked using the same GUID value. When message is going to be sent to listeners GUID value is saved to the stream before `IMessage.Convert()` serializes the message.When received server checks by GUID value is there subscriber for this kind of message or not. 
 
 
